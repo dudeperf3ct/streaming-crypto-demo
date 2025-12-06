@@ -1,0 +1,68 @@
+services:
+  kafka:
+    image: apache/kafka:4.1.1
+    ports:
+      - "29092:29092"
+      - "9092:9092"
+      - "9093:9093"
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092,HOST://0.0.0.0:29092,CONTROLLER://0.0.0.0:9093
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,HOST://localhost:29092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,HOST:PLAINTEXT,CONTROLLER:PLAINTEXT
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+    user: "0:0"
+    volumes:
+      - kafka-data:/tmp/kafka-logs
+
+  kafka-ui:
+    image: ghcr.io/kafbat/kafka-ui:latest
+    depends_on:
+      - kafka
+    ports:
+      - "8080:8080"
+    environment:
+      KAFKA_CLUSTERS_0_NAME: local
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:9092
+      SERVER_PORT: 8080
+
+  jobmanager:
+    build:
+      context: .
+      dockerfile: Dockerfile.flink
+    hostname: jobmanager
+    command: jobmanager
+    ports:
+      - "8081:8081"
+    environment:
+      FLINK_CLASSPATH: /opt/flink/lib/*
+      PYTHONPATH: /opt/flink/opt/python/pyflink:/opt/flink/opt/python
+      PYFLINK_CLIENT_EXECUTABLE: /usr/bin/python3
+    volumes:
+      - ./flink_job.py:/opt/flink/usrlib/flink_job.py:ro
+
+  taskmanager:
+    build:
+      context: .
+      dockerfile: Dockerfile.flink
+    hostname: taskmanager
+    command: taskmanager
+    depends_on:
+      - jobmanager
+    environment:
+      FLINK_PROPERTIES: |
+        jobmanager.rpc.address: jobmanager
+      FLINK_CLASSPATH: /opt/flink/lib/*
+      PYTHONPATH: /opt/flink/opt/python/pyflink:/opt/flink/opt/python
+      PYFLINK_CLIENT_EXECUTABLE: /usr/bin/python3
+    volumes:
+      - ./flink_job.py:/opt/flink/usrlib/flink_job.py:ro
+
+volumes:
+  kafka-data:
